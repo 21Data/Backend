@@ -1,38 +1,41 @@
+// db.js or wherever you configure your database connection
+
 const { Pool } = require('pg');
 
-// Create a new Pool instance for database connections
-const pool = new Pool({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_DATABASE,
-    password: '1234567890',
-    port: process.env.DB_PORT,
-});
+// Retrieve the DATABASE_URL from environment variables
+// Render automatically provides this when you link a PostgreSQL database.
+const connectionString = process.env.DATABASE_URL;
 
-console.log('--- DB Connection Debug Info ---');
-console.log('DB_USER:', process.env.DB_USER);
-console.log('DB_DATABASE:', process.env.DB_DATABASE);
-console.log('DB_PASSWORD length:', process.env.DB_PASSWORD ? process.env.DB_PASSWORD.length : 'undefined'); // Log length instead of actual password for security
-console.log('DB_PASSWORD first 5 chars:', process.env.DB_PASSWORD ? process.env.DB_PASSWORD.substring(0, 5) : 'undefined'); // Log first few chars
-console.log('DB_PASSWORD last 5 chars:', process.env.DB_PASSWORD ? process.env.DB_PASSWORD.slice(-5) : 'undefined'); // Log last few chars
-console.log('--- End Debug Info ---');
-/**
- * Executes a SQL query using the connection pool.
- * @param {string} text - The SQL query string.
- * @param {Array} params - An array of parameters for the query.
- * @returns {Promise<Object>} - The result of the query.
- */
-async function query(text, params) {
-    try {
-        const res = await pool.query(text, params);
-        return res;
-    } catch (error) {
-        console.error('Database query error:', error);
-        throw error; // Re-throw the error for handling in the route
-    }
+// IMPORTANT: For production deployments on Render,
+// you must enable SSL for your PostgreSQL connection.
+// Render's PostgreSQL databases require SSL connections.
+const sslConfig = process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false;
+
+if (!connectionString) {
+  console.error('DATABASE_URL environment variable is not set.');
+  process.exit(1); // Exit if DB connection string is missing
 }
 
+// Create a new PostgreSQL connection pool
+// A pool is recommended for production applications to manage multiple connections efficiently.
+const pool = new Pool({
+  connectionString: connectionString,
+  ssl: sslConfig, // Apply SSL configuration
+});
+
+// Optional: Add a connection test to ensure the database is reachable
+pool.on('connect', () => {
+  console.log('Connected to PostgreSQL database!');
+});
+
+pool.on('error', (err) => {
+  console.error('Unexpected error on idle client', err);
+  // process.exit(-1); // Depending on your error handling strategy, you might exit or try to reconnect
+});
+
+// Export the pool so other parts of your application can use it to query the database
 module.exports = {
-    query,
-    pool // Export the pool itself if you need direct client access (e.g., for transactions)
+  query: (text, params) => pool.query(text, params),
+  pool: pool // You might also export the pool directly for more advanced usage
 };
+
